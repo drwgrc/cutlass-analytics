@@ -1,39 +1,22 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"cutlass_analytics/internal/api"
+	"cutlass_analytics/internal/config"
 	"cutlass_analytics/internal/database"
 )
 
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
-}
-
 func main() {
-	// Config - Read database connection environment variables
-	dbHost := getEnv("DB_HOST", "postgres")
-	dbPort := getEnv("DB_PORT", "5432")
-	dbUser := getEnv("DB_USER", "postgres")
-	dbPassword := getEnv("DB_PASSWORD", "postgres")
-	dbName := getEnv("DB_NAME", "cutlass_analytics")
-	port := getEnv("BACKEND_PORT", "8080")
-
-	// Build PostgreSQL DSN string
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
-		dbHost, dbUser, dbPassword, dbName, dbPort)
+	cfg := config.Load()
 
 	// Connect to Database
 	log.Println("Connecting to database...")
-	db, err := database.Connect(dsn)
+	db, err := database.Connect(cfg.DSN())
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -65,10 +48,9 @@ func main() {
 
 	// TODO: CSV poller every 10 minutes
 
-	// TODO: Start API server
 	router := api.NewRouter(db)
-	log.Printf("Server starting on port %s", port)
-	if err := router.Run(":" + port); err != nil {
+	log.Printf("Server starting on port %s", cfg.BackendPort)
+	if err := router.Run(":" + cfg.BackendPort); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }

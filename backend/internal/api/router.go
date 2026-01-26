@@ -1,16 +1,14 @@
 package api
 
 import (
+	"time"
+
+	"cutlass_analytics/internal/dto"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
-
-// type Handlers struct {
-//     rankingRepo      *repository.RankingRepository
-//     powerRankingRepo *repository.PowerRankingRepository
-//     marketRepo       *repository.MarketRepository
-// }
 
 func NewRouter(db *gorm.DB) *gin.Engine {
     r := gin.Default()
@@ -22,34 +20,47 @@ func NewRouter(db *gorm.DB) *gin.Engine {
         AllowHeaders:     []string{"Origin", "Content-Type"},
     }))
 
-    // Initialize handlers with repositories
-    // h := &Handlers{
-    //     rankingRepo:      repository.NewRankingRepository(db),
-    //     powerRankingRepo: repository.NewPowerRankingRepository(db),
-    //     marketRepo:       repository.NewMarketRepository(db),
-    // }
-
-    // Health check
     r.GET("/api/health", func(c *gin.Context) {
-        c.JSON(200, gin.H{"status": "ok"})
+        healthCheckHandler(c, db)
     })
 
-    // API routes
-    // api := r.Group("/api")
-    {
-        // Rankings
-        // api.GET("/rankings/:entityType", h.GetRankings)
-        // api.GET("/rankings/:entityType/:id", h.GetRankingDetail)
-        // api.GET("/rankings/:entityType/:id/history", h.GetRankingHistory)
-
-        // Power Rankings
-        // api.GET("/power-rankings/:entityType", h.GetPowerRankings)
-
-        // Market
-        // api.GET("/commodities", h.GetCommodities)
-        // api.GET("/islands", h.GetIslands)
-        // api.GET("/market/orders", h.GetMarketOrders)
-    }
-
     return r
+}
+
+func healthCheckHandler(c *gin.Context, db *gorm.DB) {
+	// Get underlying sql.DB to test connectivity
+	sqlDB, err := db.DB()
+	if err != nil {
+		response := dto.HealthResponse{
+			Status:    "unhealthy",
+			Timestamp: time.Now(),
+			Services: map[string]string{
+				"database": "unhealthy",
+			},
+		}
+		c.JSON(503, response)
+		return
+	}
+
+	// Ping database to verify connectivity
+	if err := sqlDB.Ping(); err != nil {
+		response := dto.HealthResponse{
+			Status:    "unhealthy",
+			Timestamp: time.Now(),
+			Services: map[string]string{
+				"database": "unhealthy",
+			},
+		}
+		c.JSON(503, response)
+		return
+	}
+
+	response := dto.HealthResponse{
+		Status:    "healthy",
+		Timestamp: time.Now(),
+		Services: map[string]string{
+			"database": "healthy",
+		},
+	}
+	c.JSON(200, response)
 }
