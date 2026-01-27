@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"cutlass_analytics/internal/api"
 	"cutlass_analytics/internal/config"
 	"cutlass_analytics/internal/database"
+	"cutlass_analytics/internal/jobs"
 )
 
 func main() {
@@ -36,21 +40,52 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
+	// Initialize and start scheduler
+	scheduler := jobs.NewScheduler(db)
+	if err := scheduler.Start(); err != nil {
+		log.Fatalf("Failed to start scheduler: %v", err)
+	}
+	log.Println("Scheduler started successfully")
+	
+	// Run jobs once on server startup
+	scheduler.RunOnce()
+	
+	defer func() {
+		log.Println("Stopping scheduler...")
+		scheduler.Stop()
+	}()
+
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	// TODO: Initialize repositories for background jobs
-
-	// TODO: Start background jobs
-
-	// TODO: Daily scraper at 1AM PST
-
 	// TODO: CSV poller every 10 minutes
 
+	// Create HTTP server
 	router := api.NewRouter(db)
-	log.Printf("Server starting on port %s", cfg.BackendPort)
-	if err := router.Run(":" + cfg.BackendPort); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	srv := &http.Server{
+		Addr:    ":" + cfg.BackendPort,
+		Handler: router,
 	}
+
+	// Start server in a goroutine
+	go func() {
+		log.Printf("Server starting on port %s", cfg.BackendPort)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal to gracefully shutdown
+	<-sigChan
+	log.Println("Shutting down server...")
+
+	// Shutdown server with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited gracefully")
 }

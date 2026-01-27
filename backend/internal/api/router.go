@@ -3,6 +3,7 @@ package api
 import (
 	"time"
 
+	"cutlass_analytics/internal/api/handlers"
 	"cutlass_analytics/internal/dto"
 
 	"github.com/gin-contrib/cors"
@@ -23,6 +24,43 @@ func NewRouter(db *gorm.DB) *gin.Engine {
     r.GET("/api/health", func(c *gin.Context) {
         healthCheckHandler(c, db)
     })
+
+    // API routes
+    api := r.Group("/api")
+    {
+        // Islands
+        api.GET("/islands", func(c *gin.Context) { handlers.ListIslandsHandler(c, db) })
+        api.GET("/islands/:id", func(c *gin.Context) { handlers.GetIslandHandler(c, db) })
+        api.GET("/islands/game/:game_island_id", func(c *gin.Context) { handlers.GetIslandByGameIDHandler(c, db) })
+        api.GET("/islands/:id/population", func(c *gin.Context) { handlers.GetIslandPopulationHandler(c, db) })
+        api.GET("/islands/:id/governance", func(c *gin.Context) { handlers.GetIslandGovernanceHandler(c, db) })
+        api.GET("/islands/:id/commodities", func(c *gin.Context) { handlers.GetIslandCommoditiesHandler(c, db) })
+
+        // Crews
+        api.GET("/crews", func(c *gin.Context) { handlers.ListCrewsHandler(c, db) })
+        api.GET("/crews/:id", func(c *gin.Context) { handlers.GetCrewHandler(c, db) })
+        api.GET("/crews/game/:game_crew_id", func(c *gin.Context) { handlers.GetCrewByGameIDHandler(c, db) })
+        api.GET("/crews/:id/battles", func(c *gin.Context) { handlers.GetCrewBattlesHandler(c, db) })
+        api.GET("/crews/:id/fame", func(c *gin.Context) { handlers.GetCrewFameHandler(c, db) })
+        api.GET("/crews/:id/stats", func(c *gin.Context) { handlers.GetCrewStatsHandler(c, db) })
+
+        // Flags
+        api.GET("/flags", func(c *gin.Context) { handlers.ListFlagsHandler(c, db) })
+        api.GET("/flags/:id", func(c *gin.Context) { handlers.GetFlagHandler(c, db) })
+        api.GET("/flags/game/:game_flag_id", func(c *gin.Context) { handlers.GetFlagByGameIDHandler(c, db) })
+        api.GET("/flags/:id/crews", func(c *gin.Context) { handlers.GetFlagCrewsHandler(c, db) })
+        api.GET("/flags/:id/fame", func(c *gin.Context) { handlers.GetFlagFameHandler(c, db) })
+
+        // Scrape Jobs
+        api.GET("/scrape-jobs", func(c *gin.Context) { handlers.ListScrapeJobsHandler(c, db) })
+        api.GET("/scrape-jobs/:id", func(c *gin.Context) { handlers.GetScrapeJobHandler(c, db) })
+        api.GET("/scrape-jobs/status", func(c *gin.Context) { handlers.GetScrapeStatusHandler(c, db) })
+
+        // Tax Rates
+        api.GET("/tax-rates", func(c *gin.Context) { handlers.GetTaxRatesHandler(c, db) })
+        api.GET("/tax-rates/:commodity_id/history", func(c *gin.Context) { handlers.GetTaxRateHistoryHandler(c, db) })
+        api.GET("/tax-rates/compare", func(c *gin.Context) { handlers.CompareTaxRatesHandler(c, db) })
+    }
 
     return r
 }
