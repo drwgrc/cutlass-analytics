@@ -402,6 +402,10 @@ func ParseTaxRates(html string, ocean types.Ocean) ([]TaxRateData, error) {
 }
 
 // ParseCrewFameList parses the crew fame list page
+// HTML structure: table > tr (first tr has th header) > tr (data rows with 3 tds)
+//   - td[0]: Rank (integer)
+//   - td[1]: <a href="/yoweb/crew/info.wm?crewid=CrewID">Name</a>
+//   - td[2]: FameLevel (string matching FameLevel enum)
 func ParseCrewFameList(html string, ocean types.Ocean) ([]CrewFameData, error) {
 	var crews []CrewFameData
 
@@ -411,30 +415,31 @@ func ParseCrewFameList(html string, ocean types.Ocean) ([]CrewFameData, error) {
 		return crews, fmt.Errorf("ParseCrewFameList: failed to parse HTML: %w", err)
 	}
 
-	doc.Find("table").Each(func(_ int, e *goquery.Selection) {
-		e.Find("tr").Each(func(_ int, row *goquery.Selection) {
-			// Skip header row
+	doc.Find("table").Each(func(_ int, table *goquery.Selection) {
+		table.Find("tr").Each(func(_ int, row *goquery.Selection) {
+			// Skip header row (contains th elements)
 			if row.Find("th").Length() > 0 {
 				return
 			}
 
+			cells := row.Find("td")
+			// Expect exactly 3 cells: Rank, Name (with link), FameLevel
+			if cells.Length() < 3 {
+				return
+			}
+
 			var crew CrewFameData
-			var rankStr string
 
-			// Extract rank (usually first cell)
-			row.Find("td").Each(func(i int, cell *goquery.Selection) {
-				if i == 0 {
-					rankStr = strings.TrimSpace(cell.Text())
-					if rank, err := strconv.Atoi(rankStr); err == nil {
-						crew.Rank = &rank
-					}
-				}
-			})
+			// td[0]: Rank
+			rankStr := strings.TrimSpace(cells.Eq(0).Text())
+			if rank, err := strconv.Atoi(rankStr); err == nil {
+				crew.Rank = &rank
+			}
 
-			// Extract crew ID and name from links
-			row.Find("a[href*='crewid=']").Each(func(_ int, link *goquery.Selection) {
+			// td[1]: <a href="/yoweb/crew/info.wm?crewid=CrewID">Name</a>
+			cells.Eq(1).Find("a").Each(func(_ int, link *goquery.Selection) {
 				href, exists := link.Attr("href")
-				if exists {
+				if exists && strings.Contains(href, "crewid=") {
 					re := regexp.MustCompile(`crewid=(\d+)`)
 					matches := re.FindStringSubmatch(href)
 					if len(matches) > 1 {
@@ -446,14 +451,15 @@ func ParseCrewFameList(html string, ocean types.Ocean) ([]CrewFameData, error) {
 				}
 			})
 
-			// Extract fame level from text
-			rowText := strings.ToLower(row.Text())
+			// td[2]: FameLevel
+			fameLevelText := strings.TrimSpace(cells.Eq(2).Text())
+			fameLevelLower := strings.ToLower(fameLevelText)
 			for _, level := range []types.FameLevel{
 				types.FameLevelIllustrious, types.FameLevelRenowned, types.FameLevelEminent,
 				types.FameLevelCelebrated, types.FameLevelDistinguished, types.FameLevelRecognized,
 				types.FameLevelNoted, types.FameLevelRumored, types.FameLevelObscure,
 			} {
-				if strings.Contains(rowText, strings.ToLower(string(level))) {
+				if strings.Contains(fameLevelLower, strings.ToLower(string(level))) {
 					crew.FameLevel = level
 					break
 				}
