@@ -486,31 +486,45 @@ func ParseCrewInfo(html string, crewID uint64, ocean types.Ocean) (*CrewData, er
 		return crew, fmt.Errorf("ParseCrewInfo: failed to parse HTML: %w", err)
 	}
 
-	// Extract crew name
-	doc.Find("h1, h2, title").Each(func(_ int, e *goquery.Selection) {
-		if crew.Name == "" {
-			text := strings.TrimSpace(e.Text())
-			if text != "" && !strings.Contains(strings.ToLower(text), "puzzle pirates") {
-				crew.Name = text
-			}
-		}
-	})
+	// Crew info on this page lives in the first td with width ~246.
+	// - Name: first <font> contains <b>Name</b>
+	// - Flag (optional): first <a> inside the cell contains flagid= in href; link text is flag name
+	infoCell := doc.Find(`td[width='246'], td[width="246"]`).First()
+	if infoCell.Length() == 0 {
+		infoCell = doc.Find(`td[width*='246'], td[width*="246"]`).First()
+	}
 
-	// Extract flag ID from links
-	doc.Find("a[href*='flagid=']").Each(func(_ int, e *goquery.Selection) {
-		href, exists := e.Attr("href")
-		if exists {
-			re := regexp.MustCompile(`flagid=(\d+)`)
-			matches := re.FindStringSubmatch(href)
-			if len(matches) > 1 {
-				if id, err := strconv.ParseUint(matches[1], 10, 64); err == nil {
-					flagID := id
-					crew.FlagID = &flagID
-					crew.FlagName = strings.TrimSpace(e.Text())
+	// Extract crew name (prefer the documented selector)
+	if infoCell.Length() > 0 {
+		name := strings.TrimSpace(infoCell.Find("font").First().Find("b").First().Text())
+		if name == "" {
+			name = strings.TrimSpace(infoCell.Find("font b").First().Text())
+		}
+		if name != "" {
+			crew.Name = name
+		}
+
+		// Extract optional flag from the first link in the info cell.
+		crew.FlagID = nil
+		crew.FlagName = ""
+
+		flagLink := infoCell.Find("a").First()
+		if flagLink.Length() == 0 {
+			flagLink = infoCell.Find("a[href*='flagid=']").First()
+		}
+		if flagLink.Length() > 0 {
+			if href, ok := flagLink.Attr("href"); ok {
+				re := regexp.MustCompile(`flagid=(\d+)`)
+				if matches := re.FindStringSubmatch(href); len(matches) > 1 {
+					if id, err := strconv.ParseUint(matches[1], 10, 64); err == nil {
+						flagID := id
+						crew.FlagID = &flagID
+						crew.FlagName = strings.TrimSpace(flagLink.Text())
+					}
 				}
 			}
 		}
-	})
+	}
 
 	return crew, nil
 }
