@@ -598,6 +598,10 @@ func ParseCrewBattleInfo(html string, crewID uint64) (*CrewBattleData, error) {
 }
 
 // ParseFlagFameList parses the flag fame list page
+// HTML structure: table > tr (first tr has headings, skip) > tr (data rows with 3 tds)
+//   - td[0]: Rank (integer)
+//   - td[1]: <a href="...?flagid=FlagID">FlagName</a>
+//   - td[2]: FameLevel (string matching FameLevel enum)
 func ParseFlagFameList(html string, ocean types.Ocean) ([]FlagFameData, error) {
 	var flags []FlagFameData
 
@@ -607,28 +611,29 @@ func ParseFlagFameList(html string, ocean types.Ocean) ([]FlagFameData, error) {
 		return flags, fmt.Errorf("ParseFlagFameList: failed to parse HTML: %w", err)
 	}
 
-	doc.Find("table").Each(func(_ int, e *goquery.Selection) {
-		e.Find("tr").Each(func(_ int, row *goquery.Selection) {
-			// Skip header row
+	doc.Find("table").Each(func(_ int, table *goquery.Selection) {
+		table.Find("tr").Each(func(_ int, row *goquery.Selection) {
+			// Skip header row (first tr with headings)
 			if row.Find("th").Length() > 0 {
 				return
 			}
 
+			cells := row.Find("td")
+			// Expect exactly 3 cells: Rank, Flag (with link), FameLevel
+			if cells.Length() < 3 {
+				return
+			}
+
 			var flag FlagFameData
-			var rankStr string
 
-			// Extract rank (usually first cell)
-			row.Find("td").Each(func(i int, cell *goquery.Selection) {
-				if i == 0 {
-					rankStr = strings.TrimSpace(cell.Text())
-					if rank, err := strconv.Atoi(rankStr); err == nil {
-						flag.Rank = &rank
-					}
-				}
-			})
+			// td[0]: Rank
+			rankStr := strings.TrimSpace(cells.Eq(0).Text())
+			if rank, err := strconv.Atoi(rankStr); err == nil {
+				flag.Rank = &rank
+			}
 
-			// Extract flag ID and name from links
-			row.Find("a[href*='flagid=']").Each(func(_ int, link *goquery.Selection) {
+			// td[1]: <a href="...?flagid=FlagID">FlagName</a>
+			cells.Eq(1).Find("a[href*='flagid=']").Each(func(_ int, link *goquery.Selection) {
 				href, exists := link.Attr("href")
 				if exists {
 					re := regexp.MustCompile(`flagid=(\d+)`)
@@ -642,14 +647,15 @@ func ParseFlagFameList(html string, ocean types.Ocean) ([]FlagFameData, error) {
 				}
 			})
 
-			// Extract fame level from text
-			rowText := strings.ToLower(row.Text())
+			// td[2]: FameLevel
+			fameLevelText := strings.TrimSpace(cells.Eq(2).Text())
+			fameLevelLower := strings.ToLower(fameLevelText)
 			for _, level := range []types.FameLevel{
 				types.FameLevelIllustrious, types.FameLevelRenowned, types.FameLevelEminent,
 				types.FameLevelCelebrated, types.FameLevelDistinguished, types.FameLevelRecognized,
 				types.FameLevelNoted, types.FameLevelRumored, types.FameLevelObscure,
 			} {
-				if strings.Contains(rowText, strings.ToLower(string(level))) {
+				if strings.Contains(fameLevelLower, strings.ToLower(string(level))) {
 					flag.FameLevel = level
 					break
 				}
