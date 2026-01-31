@@ -67,8 +67,12 @@ type FlagFameData struct {
 
 // FlagData represents parsed flag information
 type FlagData struct {
-	GameFlagID uint64
-	Name       string
+	GameFlagID          uint64
+	Name                string
+	ConquerorReputation *types.FameLevel
+	ExplorerReputation  *types.FameLevel
+	PatronReputation    *types.FameLevel
+	MagnateReputation   *types.FameLevel
 }
 
 
@@ -671,6 +675,10 @@ func ParseFlagFameList(html string, ocean types.Ocean) ([]FlagFameData, error) {
 }
 
 // ParseFlagInfo parses a flag info page
+// HTML structure: td[width="246"] cells contain the data
+//   - First td[width="246"]: font > b has Name
+//   - Second td[width="246"]: table with trs, each tr's td[1] has font with reputation level
+//     - tr[0]: Conqueror, tr[1]: Explorer, tr[2]: Patron, tr[3]: Magnate
 func ParseFlagInfo(html string, flagID uint64, ocean types.Ocean) (*FlagData, error) {
 	flag := &FlagData{
 		GameFlagID: flagID,
@@ -682,15 +690,67 @@ func ParseFlagInfo(html string, flagID uint64, ocean types.Ocean) (*FlagData, er
 		return flag, fmt.Errorf("ParseFlagInfo: failed to parse HTML: %w", err)
 	}
 
-	// Extract flag name
-	doc.Find("h1, h2, title").Each(func(_ int, e *goquery.Selection) {
-		if flag.Name == "" {
-			text := strings.TrimSpace(e.Text())
-			if text != "" && !strings.Contains(strings.ToLower(text), "puzzle pirates") {
-				flag.Name = text
-			}
+	// Find td[width="246"] elements (handle both single and double quotes)
+	infoCells := doc.Find(`td[width="246"], td[width='246']`)
+
+	// First td[width="246"]: Name from font > b
+	if infoCells.Length() >= 1 {
+		firstCell := infoCells.Eq(0)
+		name := strings.TrimSpace(firstCell.Find("font").First().Find("b").First().Text())
+		if name == "" {
+			name = strings.TrimSpace(firstCell.Find("font b").First().Text())
 		}
-	})
+		if name != "" {
+			flag.Name = name
+		}
+	}
+
+	// Second td[width="246"]: table with reputation levels
+	if infoCells.Length() >= 2 {
+		secondCell := infoCells.Eq(1)
+		table := secondCell.Find("table").First()
+		table.Find("tr").Each(func(i int, row *goquery.Selection) {
+			cells := row.Find("td")
+			if cells.Length() < 2 {
+				return
+			}
+			// td[1]: font element with reputation level (same values as FameLevel)
+			levelText := strings.TrimSpace(cells.Eq(1).Find("font").Text())
+			if levelText == "" {
+				levelText = strings.TrimSpace(cells.Eq(1).Text())
+			}
+			level := parseFameLevelFromText(levelText)
+			if level == "" {
+				return
+			}
+			lvl := level
+			switch i {
+			case 0:
+				flag.ConquerorReputation = &lvl
+			case 1:
+				flag.ExplorerReputation = &lvl
+			case 2:
+				flag.PatronReputation = &lvl
+			case 3:
+				flag.MagnateReputation = &lvl
+			}
+		})
+	}
 
 	return flag, nil
+}
+
+// parseFameLevelFromText matches text against FameLevel enum values
+func parseFameLevelFromText(text string) types.FameLevel {
+	textLower := strings.ToLower(text)
+	for _, level := range []types.FameLevel{
+		types.FameLevelIllustrious, types.FameLevelRenowned, types.FameLevelEminent,
+		types.FameLevelCelebrated, types.FameLevelDistinguished, types.FameLevelRecognized,
+		types.FameLevelNoted, types.FameLevelRumored, types.FameLevelObscure,
+	} {
+		if strings.Contains(textLower, strings.ToLower(string(level))) {
+			return level
+		}
+	}
+	return ""
 }
