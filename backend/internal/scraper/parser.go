@@ -47,6 +47,7 @@ type CrewData struct {
 	Name       string
 	FlagID     *uint64
 	FlagName   string
+	CrewRank   types.CrewRank // From anchor with href to battleinfo.wm (link text)
 }
 
 // CrewBattleData represents parsed crew battle information
@@ -524,12 +525,44 @@ func ParseCrewInfo(html string, crewID uint64, ocean types.Ocean) (*CrewData, er
 				}
 			}
 		}
+
 	}
+
+	// Extract CrewRank from anchor with href="battleinfo.wm?crewid={CrewID}&classic=false" (link text is the rank)
+	doc.Find("a[href*='battleinfo.wm']").Each(func(_ int, link *goquery.Selection) {
+		if crew.CrewRank != "" {
+			return
+		}
+		href, exists := link.Attr("href")
+		if !exists {
+			return
+		}
+		// Verify href contains crewid matching our crew
+		re := regexp.MustCompile(`crewid=(\d+)`)
+		matches := re.FindStringSubmatch(href)
+		if len(matches) > 1 {
+			if id, err := strconv.ParseUint(matches[1], 10, 64); err == nil && id == crewID {
+				rankText := strings.TrimSpace(link.Text())
+				for _, rank := range []types.CrewRank{
+					types.CrewRankImperials, types.CrewRankSeaLords, types.CrewRankDreadPirates,
+					types.CrewRankBlaggards, types.CrewRankScoundrels, types.CrewRankScurvyDogs,
+					types.CrewRankMostlyHarmless, types.CrewRankSailors,
+				} {
+					if strings.EqualFold(rankText, string(rank)) {
+						crew.CrewRank = rank
+						return
+					}
+				}
+			}
+		}
+	})
 
 	return crew, nil
 }
 
-// ParseCrewBattleInfo parses a crew battle info page
+// ParseCrewBattleInfo parses a crew battle info page.
+// CrewRank is obtained from the Crew Info Page (anchor with href to battleinfo.wm), not from this page.
+// First table: skip first 2 trs, then each tr has tds: Date, Battles, Wins, Losses, PVP wins, PVP losses, Avg duration (indices 0-6).
 func ParseCrewBattleInfo(html string, crewID uint64) (*CrewBattleData, error) {
 	battle := &CrewBattleData{}
 
@@ -539,39 +572,25 @@ func ParseCrewBattleInfo(html string, crewID uint64) (*CrewBattleData, error) {
 		return battle, fmt.Errorf("ParseCrewBattleInfo: failed to parse HTML: %w", err)
 	}
 
-	// Extract crew rank
-	doc.Find("*").Each(func(_ int, e *goquery.Selection) {
-		text := strings.ToLower(e.Text())
-		for _, rank := range []types.CrewRank{
-			types.CrewRankImperials, types.CrewRankSeaLords, types.CrewRankDreadPirates,
-			types.CrewRankBlaggards, types.CrewRankScoundrels, types.CrewRankScurvyDogs,
-			types.CrewRankMostlyHarmless, types.CrewRankSailors,
-		} {
-			if strings.Contains(text, strings.ToLower(string(rank))) {
-				battle.CrewRank = rank
-				return
-			}
+	// First table: skip first 2 trs, then each tr has tds: Date, Battles, Wins, Losses, PVP wins, PVP losses, Avg duration
+	firstTable := doc.Find("table").First()
+	rows := firstTable.Find("tr")
+	rows.Each(func(i int, row *goquery.Selection) {
+		if i < 2 {
+			return // Skip first 2 rows
 		}
-	})
-
-	// Extract PVP wins/losses
-	doc.Find("*").Each(func(_ int, e *goquery.Selection) {
-		text := e.Text()
-		// Look for patterns like "Wins: 123" or "PVP Wins: 123"
-		re := regexp.MustCompile(`(?i)(?:pvp\s+)?wins?[:\s]+(\d+)`)
-		matches := re.FindStringSubmatch(text)
-		if len(matches) > 1 {
-			if wins, err := strconv.Atoi(matches[1]); err == nil {
-				battle.TotalPVPWins = wins
-			}
+		cells := row.Find("td")
+		if cells.Length() < 6 {
+			return
 		}
-
-		re = regexp.MustCompile(`(?i)(?:pvp\s+)?losses?[:\s]+(\d+)`)
-		matches = re.FindStringSubmatch(text)
-		if len(matches) > 1 {
-			if losses, err := strconv.Atoi(matches[1]); err == nil {
-				battle.TotalPVPLosses = losses
-			}
+		// td[4]: PVP wins, td[5]: PVP losses
+		pvpWinsStr := strings.TrimSpace(cells.Eq(4).Text())
+		pvpLossesStr := strings.TrimSpace(cells.Eq(5).Text())
+		if wins, err := strconv.Atoi(strings.ReplaceAll(pvpWinsStr, ",", "")); err == nil {
+			battle.TotalPVPWins += wins
+		}
+		if losses, err := strconv.Atoi(strings.ReplaceAll(pvpLossesStr, ",", "")); err == nil {
+			battle.TotalPVPLosses += losses
 		}
 	})
 

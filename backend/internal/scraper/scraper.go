@@ -546,7 +546,7 @@ func (s *Scraper) processCrew(fameData CrewFameData, scrapedAt time.Time) error 
 				battleRecord := models.CrewBattleRecord{
 					CrewID:         crew.ID,
 					ScrapedAt:      scrapedAt,
-					CrewRank:       battleData.CrewRank,
+					CrewRank:       crewData.CrewRank,
 					TotalPVPWins:   battleData.TotalPVPWins,
 					TotalPVPLosses: battleData.TotalPVPLosses,
 				}
@@ -583,6 +583,16 @@ func (s *Scraper) ScrapeBattleInfo() error {
 	scrapedAt := time.Now()
 
 	for _, crew := range crews {
+		// Fetch crew info page to get CrewRank (it's on crew info, not battle info page)
+		crewInfoURL := GetCrewInfoURL(s.ocean, crew.GameCrewID)
+		crewInfoHTML, err := s.fetchHTML(crewInfoURL)
+		var crewRank types.CrewRank
+		if err == nil {
+			if crewData, err := ParseCrewInfo(crewInfoHTML, crew.GameCrewID, s.ocean); err == nil {
+				crewRank = crewData.CrewRank
+			}
+		}
+
 		battleURL := GetCrewBattleInfoURL(s.ocean, crew.GameCrewID)
 		battleHTML, err := s.fetchHTML(battleURL)
 		if err != nil {
@@ -606,7 +616,7 @@ func (s *Scraper) ScrapeBattleInfo() error {
 		battleRecord := models.CrewBattleRecord{
 			CrewID:         crew.ID,
 			ScrapedAt:      scrapedAt,
-			CrewRank:       battleData.CrewRank,
+			CrewRank:       crewRank,
 			TotalPVPWins:   battleData.TotalPVPWins,
 			TotalPVPLosses: battleData.TotalPVPLosses,
 		}
