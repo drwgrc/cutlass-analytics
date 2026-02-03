@@ -1,0 +1,1496 @@
+openapi: 3.0.3
+info:
+  title: Cutlass Analytics API
+  description: |
+    REST API for Puzzle Pirates game data analytics. Provides access to islands, crews, flags,
+    tax rates, and scrape job information across multiple oceans (Emerald, Meridian, Cerulean).
+
+    Data is collected via automated scrapers that run daily at 3:30 AM PST, with market order
+    data refreshed every 10 minutes from the game's buysell CSV exports.
+  version: 1.0.0
+  contact:
+    name: Cutlass Analytics
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+tags:
+  - name: Health
+    description: Service health checks
+  - name: Islands
+    description: Island information and statistics
+  - name: Crews
+    description: Crew information, battle records, and fame history
+  - name: Flags
+    description: Flag information and member crews
+  - name: Tax Rates
+    description: Commodity tax rates across oceans
+  - name: Scrape Jobs
+    description: Data scraping job status and history
+
+paths:
+  /api/health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the health status of the API and its dependent services
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ============== ISLANDS ==============
+  /api/islands:
+    get:
+      tags:
+        - Islands
+      summary: List islands
+      description: Returns a paginated list of islands with optional filtering
+      operationId: listIslands
+      parameters:
+        - $ref: '#/components/parameters/OceanQueryParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/SortOrderParam'
+        - name: archipelago_id
+          in: query
+          description: Filter by archipelago ID
+          schema:
+            type: integer
+            minimum: 1
+        - name: size
+          in: query
+          description: Filter by island size
+          schema:
+            type: string
+            enum: [outpost, medium, large]
+        - name: is_colonized
+          in: query
+          description: Filter by colonization status
+          schema:
+            type: boolean
+        - name: has_commodity
+          in: query
+          description: Filter by commodity availability
+          schema:
+            type: string
+        - name: governor_flag_id
+          in: query
+          description: Filter by governing flag ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IslandListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/islands/{id}:
+    get:
+      tags:
+        - Islands
+      summary: Get island by ID
+      description: Returns detailed information about a specific island
+      operationId: getIsland
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal island ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IslandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/islands/game/{game_island_id}:
+    get:
+      tags:
+        - Islands
+      summary: Get island by game ID
+      description: Returns island information using the game's internal island ID
+      operationId: getIslandByGameId
+      parameters:
+        - name: game_island_id
+          in: path
+          required: true
+          description: Game's internal island ID
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/OceanQueryParamRequired'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IslandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/islands/{id}/population:
+    get:
+      tags:
+        - Islands
+      summary: Get island population history
+      description: Returns historical population data for an island within a date range
+      operationId: getIslandPopulation
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal island ID
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IslandPopulationHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/islands/{id}/governance:
+    get:
+      tags:
+        - Islands
+      summary: Get island governance history
+      description: Returns the history of flags and governors that have controlled the island
+      operationId: getIslandGovernance
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal island ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IslandGovernanceHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/islands/{id}/commodities:
+    get:
+      tags:
+        - Islands
+      summary: Get island commodities
+      description: Returns the list of commodities that spawn on an island
+      operationId: getIslandCommodities
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal island ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IslandCommoditiesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============== CREWS ==============
+  /api/crews:
+    get:
+      tags:
+        - Crews
+      summary: List crews
+      description: Returns a paginated list of crews with optional filtering
+      operationId: listCrews
+      parameters:
+        - $ref: '#/components/parameters/OceanQueryParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/SortOrderParam'
+        - name: is_active
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+        - name: flag_id
+          in: query
+          description: Filter by flag ID
+          schema:
+            type: integer
+            minimum: 1
+        - name: crew_rank
+          in: query
+          description: Filter by crew rank
+          schema:
+            type: string
+            enum: [Sailors, Mostly Harmless, Scurvy Dogs, Scoundrels, Blaggards, Dread Pirates, Sea Lords, Imperials]
+        - name: fame_level
+          in: query
+          description: Filter by fame level
+          schema:
+            type: string
+            enum: [Obscure, Rumored, Noted, Recognized, Distinguished, Celebrated, Eminent, Renowned, Illustrious]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/crews/{id}:
+    get:
+      tags:
+        - Crews
+      summary: Get crew by ID
+      description: Returns detailed information about a specific crew
+      operationId: getCrew
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal crew ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/crews/game/{game_crew_id}:
+    get:
+      tags:
+        - Crews
+      summary: Get crew by game ID
+      description: Returns crew information using the game's internal crew ID
+      operationId: getCrewByGameId
+      parameters:
+        - name: game_crew_id
+          in: path
+          required: true
+          description: Game's internal crew ID
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/OceanQueryParamRequired'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/crews/{id}/battles:
+    get:
+      tags:
+        - Crews
+      summary: Get crew battle records
+      description: Returns historical PVP battle records for a crew
+      operationId: getCrewBattles
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal crew ID
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewBattleRecordListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/crews/{id}/fame:
+    get:
+      tags:
+        - Crews
+      summary: Get crew fame history
+      description: Returns historical fame level and rank changes for a crew
+      operationId: getCrewFame
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal crew ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewFameHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/crews/{id}/stats:
+    get:
+      tags:
+        - Crews
+      summary: Get crew current stats
+      description: Returns the current PVP statistics for a crew including win rate and total battles
+      operationId: getCrewStats
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal crew ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CrewPVPStatsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============== FLAGS ==============
+  /api/flags:
+    get:
+      tags:
+        - Flags
+      summary: List flags
+      description: Returns a paginated list of flags with optional filtering
+      operationId: listFlags
+      parameters:
+        - $ref: '#/components/parameters/OceanQueryParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/SortOrderParam'
+        - name: is_active
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+        - name: fame_level
+          in: query
+          description: Filter by fame level
+          schema:
+            type: string
+            enum: [Obscure, Rumored, Noted, Recognized, Distinguished, Celebrated, Eminent, Renowned, Illustrious]
+        - name: min_crews
+          in: query
+          description: Filter by minimum number of crews
+          schema:
+            type: integer
+            minimum: 0
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/flags/{id}:
+    get:
+      tags:
+        - Flags
+      summary: Get flag by ID
+      description: Returns detailed information about a specific flag
+      operationId: getFlag
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal flag ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/flags/game/{game_flag_id}:
+    get:
+      tags:
+        - Flags
+      summary: Get flag by game ID
+      description: Returns flag information using the game's internal flag ID
+      operationId: getFlagByGameId
+      parameters:
+        - name: game_flag_id
+          in: path
+          required: true
+          description: Game's internal flag ID
+          schema:
+            type: integer
+        - $ref: '#/components/parameters/OceanQueryParamRequired'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/flags/{id}/crews:
+    get:
+      tags:
+        - Flags
+      summary: Get flag's crews
+      description: Returns all crews that belong to a flag with their PVP statistics
+      operationId: getFlagCrews
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal flag ID
+          schema:
+            type: integer
+            minimum: 1
+        - name: is_active
+          in: query
+          description: Filter by active status
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/flags/{id}/fame:
+    get:
+      tags:
+        - Flags
+      summary: Get flag fame history
+      description: Returns historical fame level and rank changes for a flag
+      operationId: getFlagFame
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Internal flag ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlagFameHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============== TAX RATES ==============
+  /api/tax-rates:
+    get:
+      tags:
+        - Tax Rates
+      summary: Get current tax rates
+      description: Returns current commodity tax rates for a specific ocean
+      operationId: getTaxRates
+      parameters:
+        - $ref: '#/components/parameters/OceanQueryParamRequired'
+        - name: category
+          in: query
+          description: Filter by commodity category
+          schema:
+            type: string
+            enum: [basic, herb, mineral, foraged, refined, ship_supply]
+        - name: group_by_category
+          in: query
+          description: Group results by commodity category
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OceanTaxRatesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tax-rates/{commodity_id}/history:
+    get:
+      tags:
+        - Tax Rates
+      summary: Get tax rate history
+      description: Returns historical tax rate changes for a specific commodity
+      operationId: getTaxRateHistory
+      parameters:
+        - name: commodity_id
+          in: path
+          required: true
+          description: Commodity ID
+          schema:
+            type: integer
+            minimum: 1
+        - $ref: '#/components/parameters/OceanQueryParamRequired'
+        - $ref: '#/components/parameters/StartDateParam'
+        - $ref: '#/components/parameters/EndDateParam'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxRateHistoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/tax-rates/compare:
+    get:
+      tags:
+        - Tax Rates
+      summary: Compare tax rates across oceans
+      description: Returns tax rates for a commodity across all oceans for comparison
+      operationId: compareTaxRates
+      parameters:
+        - name: commodity_id
+          in: query
+          required: true
+          description: Commodity ID to compare
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaxRateComparisonResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  # ============== SCRAPE JOBS ==============
+  /api/scrape-jobs:
+    get:
+      tags:
+        - Scrape Jobs
+      summary: List scrape jobs
+      description: Returns a paginated list of scrape jobs with optional filtering
+      operationId: listScrapeJobs
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+        - $ref: '#/components/parameters/SortByParam'
+        - $ref: '#/components/parameters/SortOrderParam'
+        - name: ocean
+          in: query
+          description: Filter by ocean
+          schema:
+            type: string
+            enum: [emerald, meridian, cerulean]
+        - name: job_type
+          in: query
+          description: Filter by job type
+          schema:
+            type: string
+            enum: [crew_fame, flag_fame, crew_info, battle_info, daily_full]
+        - name: status
+          in: query
+          description: Filter by job status
+          schema:
+            type: string
+            enum: [running, completed, failed]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapeJobListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/scrape-jobs/{id}:
+    get:
+      tags:
+        - Scrape Jobs
+      summary: Get scrape job by ID
+      description: Returns detailed information about a specific scrape job
+      operationId: getScrapeJob
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Scrape job ID
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapeJobDetailResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/scrape-jobs/status:
+    get:
+      tags:
+        - Scrape Jobs
+      summary: Get scrape status
+      description: Returns the current scrape status for a specific ocean including running job and last completed job
+      operationId: getScrapeStatus
+      parameters:
+        - $ref: '#/components/parameters/OceanQueryParamRequired'
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrapeStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  parameters:
+    OceanQueryParam:
+      name: ocean
+      in: query
+      description: Ocean to query (optional for some endpoints)
+      schema:
+        type: string
+        enum: [emerald, meridian, cerulean]
+
+    OceanQueryParamRequired:
+      name: ocean
+      in: query
+      required: true
+      description: Ocean to query
+      schema:
+        type: string
+        enum: [emerald, meridian, cerulean]
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number (1-indexed)
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PerPageParam:
+      name: per_page
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+
+    SortByParam:
+      name: sort_by
+      in: query
+      description: Field to sort by
+      schema:
+        type: string
+
+    SortOrderParam:
+      name: sort_order
+      in: query
+      description: Sort order
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+
+    StartDateParam:
+      name: start_date
+      in: query
+      description: Start date for date range (YYYY-MM-DD format, defaults to 30 days ago)
+      schema:
+        type: string
+        format: date
+
+    EndDateParam:
+      name: end_date
+      in: query
+      description: End date for date range (YYYY-MM-DD format, defaults to today)
+      schema:
+        type: string
+        format: date
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIErrorResponse'
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/APIErrorResponse'
+
+  schemas:
+    # ============== Common Schemas ==============
+    APIErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          $ref: '#/components/schemas/APIError'
+
+    APIError:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Error code
+          example: INVALID_REQUEST
+        message:
+          type: string
+          description: Human-readable error message
+          example: Invalid request parameters
+        details:
+          type: string
+          description: Additional error details
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 25
+        total:
+          type: integer
+          example: 150
+        total_pages:
+          type: integer
+          example: 6
+        has_next:
+          type: boolean
+          example: true
+        has_prev:
+          type: boolean
+          example: false
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          example: healthy
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            database: healthy
+
+    # ============== Island Schemas ==============
+    IslandBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+        game_island_id:
+          type: integer
+        name:
+          type: string
+        ocean:
+          type: string
+        is_colonized:
+          type: boolean
+
+    ArchipelagoBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        color:
+          type: string
+
+    IslandGovernor:
+      type: object
+      properties:
+        flag_id:
+          type: integer
+        flag_name:
+          type: string
+        governor_name:
+          type: string
+
+    IslandResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        game_island_id:
+          type: integer
+        name:
+          type: string
+        ocean:
+          type: string
+          enum: [emerald, meridian, cerulean]
+        size:
+          type: string
+          enum: [outpost, medium, large]
+        is_colonized:
+          type: boolean
+        population:
+          type: integer
+        archipelago:
+          $ref: '#/components/schemas/ArchipelagoBrief'
+        governor:
+          $ref: '#/components/schemas/IslandGovernor'
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        url:
+          type: string
+          description: URL to the island's yoweb page
+
+    IslandListResponse:
+      type: object
+      properties:
+        islands:
+          type: array
+          items:
+            $ref: '#/components/schemas/IslandResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    IslandPopulationResponse:
+      type: object
+      properties:
+        island_id:
+          type: integer
+        scraped_at:
+          type: string
+          format: date-time
+        population:
+          type: integer
+
+    IslandPopulationHistoryResponse:
+      type: object
+      properties:
+        island:
+          $ref: '#/components/schemas/IslandBrief'
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/IslandPopulationResponse'
+        min_population:
+          type: integer
+        max_population:
+          type: integer
+        avg_population:
+          type: integer
+
+    GovernanceChangeResponse:
+      type: object
+      properties:
+        flag_id:
+          type: integer
+        flag_name:
+          type: string
+        governor_name:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        change_type:
+          type: string
+        is_current:
+          type: boolean
+
+    IslandGovernanceHistoryResponse:
+      type: object
+      properties:
+        island:
+          $ref: '#/components/schemas/IslandBrief'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/GovernanceChangeResponse'
+
+    CommodityBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        display_name:
+          type: string
+        category:
+          type: string
+
+    CommoditySpawnInfo:
+      type: object
+      properties:
+        commodity:
+          $ref: '#/components/schemas/CommodityBrief'
+        is_confirmed:
+          type: boolean
+
+    IslandCommoditiesResponse:
+      type: object
+      properties:
+        island:
+          $ref: '#/components/schemas/IslandBrief'
+        commodities:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommoditySpawnInfo'
+
+    # ============== Crew Schemas ==============
+    FlagBrief:
+      type: object
+      properties:
+        id:
+          type: integer
+        game_flag_id:
+          type: integer
+        name:
+          type: string
+        ocean:
+          type: string
+
+    CrewURLs:
+      type: object
+      properties:
+        info:
+          type: string
+          description: URL to crew info page
+        battle_info:
+          type: string
+          description: URL to crew battle info page
+
+    CrewResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        game_crew_id:
+          type: integer
+        name:
+          type: string
+        ocean:
+          type: string
+          enum: [emerald, meridian, cerulean]
+        is_active:
+          type: boolean
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        flag:
+          $ref: '#/components/schemas/FlagBrief'
+        urls:
+          $ref: '#/components/schemas/CrewURLs'
+
+    CrewListResponse:
+      type: object
+      properties:
+        crews:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    CrewBattleRecordResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        crew_id:
+          type: integer
+        scraped_at:
+          type: string
+          format: date-time
+        crew_rank:
+          type: string
+        total_pvp_wins:
+          type: integer
+        total_pvp_losses:
+          type: integer
+        daily_pvp_wins:
+          type: integer
+        daily_pvp_losses:
+          type: integer
+        win_rate:
+          type: number
+          format: float
+        total_battles:
+          type: integer
+
+    CrewBattleRecordListResponse:
+      type: object
+      properties:
+        crew_id:
+          type: integer
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewBattleRecordResponse'
+
+    CrewFameResponse:
+      type: object
+      properties:
+        crew_id:
+          type: integer
+        scraped_at:
+          type: string
+          format: date-time
+        fame_level:
+          type: string
+          enum: [Obscure, Rumored, Noted, Recognized, Distinguished, Celebrated, Eminent, Renowned, Illustrious]
+        fame_rank:
+          type: integer
+
+    CrewFameHistoryResponse:
+      type: object
+      properties:
+        crew_id:
+          type: integer
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/CrewFameResponse'
+
+    CrewPVPStatsResponse:
+      type: object
+      properties:
+        crew_id:
+          type: integer
+        game_crew_id:
+          type: integer
+        name:
+          type: string
+        ocean:
+          type: string
+        flag_id:
+          type: integer
+        flag_name:
+          type: string
+        crew_rank:
+          type: string
+        total_pvp_wins:
+          type: integer
+        total_pvp_losses:
+          type: integer
+        win_rate:
+          type: number
+          format: float
+        total_battles:
+          type: integer
+        last_updated:
+          type: string
+          format: date-time
+
+    # ============== Flag Schemas ==============
+    FlagResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        game_flag_id:
+          type: integer
+        name:
+          type: string
+        ocean:
+          type: string
+          enum: [emerald, meridian, cerulean]
+        is_active:
+          type: boolean
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        url:
+          type: string
+          description: URL to the flag's yoweb page
+
+    FlagListResponse:
+      type: object
+      properties:
+        flags:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlagResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    FlagDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/FlagResponse'
+        - type: object
+          properties:
+            crew_count:
+              type: integer
+            crews:
+              type: array
+              items:
+                $ref: '#/components/schemas/CrewPVPStatsResponse'
+
+    FlagFameResponse:
+      type: object
+      properties:
+        flag_id:
+          type: integer
+        scraped_at:
+          type: string
+          format: date-time
+        fame_level:
+          type: string
+          enum: [Obscure, Rumored, Noted, Recognized, Distinguished, Celebrated, Eminent, Renowned, Illustrious]
+        fame_rank:
+          type: integer
+
+    FlagFameHistoryResponse:
+      type: object
+      properties:
+        flag_id:
+          type: integer
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlagFameResponse'
+
+    # ============== Tax Rate Schemas ==============
+    CommodityTaxRateResponse:
+      type: object
+      properties:
+        commodity_id:
+          type: integer
+        commodity_name:
+          type: string
+        ocean:
+          type: string
+        tax_value:
+          type: integer
+          description: Tax rate percentage
+        scraped_at:
+          type: string
+          format: date-time
+
+    OceanTaxRatesResponse:
+      type: object
+      properties:
+        ocean:
+          type: string
+        scraped_at:
+          type: string
+          format: date-time
+        tax_rates:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommodityTaxRateResponse'
+        by_category:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              $ref: '#/components/schemas/CommodityTaxRateResponse'
+
+    TaxRateHistoryPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date-time
+        tax_value:
+          type: integer
+
+    TaxRateHistoryResponse:
+      type: object
+      properties:
+        commodity:
+          $ref: '#/components/schemas/CommodityBrief'
+        ocean:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+        data_points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxRateHistoryPoint'
+
+    OceanTaxRateEntry:
+      type: object
+      properties:
+        ocean:
+          type: string
+        tax_value:
+          type: integer
+
+    TaxRateComparisonResponse:
+      type: object
+      properties:
+        commodity:
+          $ref: '#/components/schemas/CommodityBrief'
+        ocean_rates:
+          type: array
+          items:
+            $ref: '#/components/schemas/OceanTaxRateEntry'
+        updated_at:
+          type: string
+          format: date-time
+
+    # ============== Scrape Job Schemas ==============
+    ScrapeJobResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        ocean:
+          type: string
+        job_type:
+          type: string
+          enum: [crew_fame, flag_fame, crew_info, battle_info, daily_full]
+        status:
+          type: string
+          enum: [running, completed, failed]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        duration:
+          type: string
+          description: Human-readable duration
+        duration_ms:
+          type: integer
+          description: Duration in milliseconds
+        items_processed:
+          type: integer
+        items_failed:
+          type: integer
+        success_rate:
+          type: number
+          format: float
+        error_message:
+          type: string
+
+    ScrapeJobListResponse:
+      type: object
+      properties:
+        jobs:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScrapeJobResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ScrapeJobDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ScrapeJobResponse'
+        - type: object
+          properties:
+            crews_processed:
+              type: integer
+            crews_failed:
+              type: integer
+            flags_processed:
+              type: integer
+            flags_failed:
+              type: integer
+            records_created:
+              type: integer
+            records_updated:
+              type: integer
+
+    ScrapeStatusResponse:
+      type: object
+      properties:
+        is_running:
+          type: boolean
+        current_job:
+          $ref: '#/components/schemas/ScrapeJobResponse'
+        last_completed:
+          $ref: '#/components/schemas/ScrapeJobResponse'
+        next_scheduled:
+          type: string
+          format: date-time
