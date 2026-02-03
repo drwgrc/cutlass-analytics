@@ -168,6 +168,16 @@ func (s *Scraper) ScrapeIslands() error {
 			continue
 		}
 
+		// Skip empty islands (no name or zero population)
+		if islandData.Name == "" {
+			log.Printf("Skipping island %d: empty name", islandID)
+			continue
+		}
+		if islandData.Population <= 0 {
+			log.Printf("Skipping island %d (%s): no population", islandID, islandData.Name)
+			continue
+		}
+
 		// Process and save island
 		if err := s.processIsland(*islandData, scrapedAt); err != nil {
 			log.Printf("Error processing island %d: %v", islandID, err)
