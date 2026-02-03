@@ -11,6 +11,7 @@ import (
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/debug"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // Scraper handles web scraping operations
@@ -463,28 +464,48 @@ func (s *Scraper) processCrew(fameData CrewFameData, scrapedAt time.Time) error 
 	}
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		// Find or create crew
-		var crew models.Crew
-		err := tx.Where("game_crew_id = ? AND ocean = ?", fameData.CrewID, s.ocean).
-			FirstOrCreate(&crew, models.Crew{
-				GameCrewID: fameData.CrewID,
-				Ocean:      s.ocean,
-				Name:       crewData.Name,
-			}).Error
+		// Check if crew exists first (to get oldFlagID for history tracking)
+		var existingCrew models.Crew
+		crewExists := tx.Where("game_crew_id = ? AND ocean = ?", fameData.CrewID, s.ocean).
+			First(&existingCrew).Error == nil
+
+		// Upsert crew using ON CONFLICT to handle race conditions
+		crew := models.Crew{
+			GameCrewID: fameData.CrewID,
+			Ocean:      s.ocean,
+			Name:       crewData.Name,
+			LastSeenAt: scrapedAt,
+		}
+		if crewExists {
+			crew.FlagID = existingCrew.FlagID
+		}
+		err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "game_crew_id"}, {Name: "ocean"}},
+			DoUpdates: clause.AssignmentColumns([]string{"name", "last_seen_at", "updated_at"}),
+		}).Create(&crew).Error
 		if err != nil {
-			return fmt.Errorf("failed to get/create crew: %w", err)
+			return fmt.Errorf("failed to upsert crew: %w", err)
 		}
 
-		// Update crew fields
-		crew.Name = crewData.Name
-		crew.LastSeenAt = scrapedAt
+		// Fetch the crew to get its ID and current state
+		if crew.ID == 0 || crewExists {
+			if err := tx.Where("game_crew_id = ? AND ocean = ?", fameData.CrewID, s.ocean).
+				First(&crew).Error; err != nil {
+				return fmt.Errorf("failed to fetch crew after upsert: %w", err)
+			}
+		}
+
+		// Track oldFlagID for history
+		var oldFlagID *uint
+		if crewExists {
+			oldFlagID = existingCrew.FlagID
+		}
 
 		// Handle flag
 		if crewData.FlagID != nil {
 			var flag models.Flag
 			if err := tx.Where("game_flag_id = ? AND ocean = ?", *crewData.FlagID, s.ocean).
 				First(&flag).Error; err == nil {
-				oldFlagID := crew.FlagID
 				crew.FlagID = &flag.ID
 
 				// Update flag history if flag changed
@@ -500,8 +521,8 @@ func (s *Scraper) processCrew(fameData CrewFameData, scrapedAt time.Time) error 
 
 					// Create new flag history
 					flagHist := models.CrewFlagHistory{
-						CrewID:  crew.ID,
-						FlagID:  &flag.ID,
+						CrewID:   crew.ID,
+						FlagID:   &flag.ID,
 						JoinedAt: scrapedAt,
 					}
 					if err := tx.Create(&flagHist).Error; err != nil {
@@ -511,7 +532,6 @@ func (s *Scraper) processCrew(fameData CrewFameData, scrapedAt time.Time) error 
 			}
 		} else {
 			// Crew is independent
-			oldFlagID := crew.FlagID
 			crew.FlagID = nil
 
 			if oldFlagID != nil {
@@ -703,24 +723,27 @@ func (s *Scraper) processFlag(fameData FlagFameData, scrapedAt time.Time) error 
 	}
 
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		// Find or create flag
-		var flag models.Flag
-		err := tx.Where("game_flag_id = ? AND ocean = ?", fameData.FlagID, s.ocean).
-			FirstOrCreate(&flag, models.Flag{
-				GameFlagID: fameData.FlagID,
-				Ocean:      s.ocean,
-				Name:       flagData.Name,
-			}).Error
+		// Upsert flag using ON CONFLICT to handle race conditions
+		flag := models.Flag{
+			GameFlagID: fameData.FlagID,
+			Ocean:      s.ocean,
+			Name:       flagData.Name,
+			LastSeenAt: scrapedAt,
+		}
+		err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "game_flag_id"}, {Name: "ocean"}},
+			DoUpdates: clause.AssignmentColumns([]string{"name", "last_seen_at", "updated_at"}),
+		}).Create(&flag).Error
 		if err != nil {
-			return fmt.Errorf("failed to get/create flag: %w", err)
+			return fmt.Errorf("failed to upsert flag: %w", err)
 		}
 
-		// Update flag fields
-		flag.Name = flagData.Name
-		flag.LastSeenAt = scrapedAt
-
-		if err := tx.Save(&flag).Error; err != nil {
-			return fmt.Errorf("failed to save flag: %w", err)
+		// Fetch the flag to get its ID (needed for fame record)
+		if flag.ID == 0 {
+			if err := tx.Where("game_flag_id = ? AND ocean = ?", fameData.FlagID, s.ocean).
+				First(&flag).Error; err != nil {
+				return fmt.Errorf("failed to fetch flag after upsert: %w", err)
+			}
 		}
 
 		// Create fame record
