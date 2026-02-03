@@ -24,6 +24,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Commodity{},
 		&models.CommodityTaxRate{},
 		&models.MarketPrice{},
+		&models.MarketOrder{},
 		&models.IslandGovernanceHistory{},
 		&models.IslandPopulation{},
 		&models.IslandCommodity{},

@@ -6,7 +6,6 @@ const (
 	OceanEmerald  Ocean = "emerald"
 	OceanMeridian Ocean = "meridian"
 	OceanCerulean Ocean = "cerulean"
-	OceanObsidian Ocean = "obsidian"
 )
 
 func (o Ocean) String() string {
@@ -15,7 +14,7 @@ func (o Ocean) String() string {
 
 func (o Ocean) IsValid() bool {
 	switch o {
-	case OceanEmerald, OceanMeridian, OceanCerulean, OceanObsidian:
+	case OceanEmerald, OceanMeridian, OceanCerulean:
 		return true
 	}
 	return false

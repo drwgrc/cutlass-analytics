@@ -40,16 +40,16 @@ func main() {
 		log.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Initialize and start scheduler
+	// Initialize and start scheduler (includes daily scraper and CSV poller)
 	scheduler := jobs.NewScheduler(db)
 	if err := scheduler.Start(); err != nil {
 		log.Fatalf("Failed to start scheduler: %v", err)
 	}
 	log.Println("Scheduler started successfully")
-	
+
 	// Run jobs once on server startup
 	scheduler.RunOnce()
-	
+
 	defer func() {
 		log.Println("Stopping scheduler...")
 		scheduler.Stop()
@@ -58,8 +58,6 @@ func main() {
 	// Setup graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
-	// TODO: CSV poller every 10 minutes
 
 	// Create HTTP server
 	router := api.NewRouter(db)

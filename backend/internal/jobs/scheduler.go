@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"cutlass_analytics/internal/models"
+	"cutlass_analytics/internal/poller"
 	"cutlass_analytics/internal/scraper"
 	"cutlass_analytics/internal/types"
 	"log"
@@ -14,12 +15,13 @@ import (
 
 // Scheduler manages cron jobs for scraping operations
 type Scheduler struct {
-	cron    *cron.Cron
-	db      *gorm.DB
-	stop    chan struct{}
-	wg      sync.WaitGroup
-	running bool
-	mu      sync.Mutex
+	cron      *cron.Cron
+	db        *gorm.DB
+	csvPoller *poller.CSVPoller
+	stop      chan struct{}
+	wg        sync.WaitGroup
+	running   bool
+	mu        sync.Mutex
 }
 
 // NewScheduler creates a new scheduler instance
@@ -33,10 +35,18 @@ func NewScheduler(db *gorm.DB) *Scheduler {
 
 	c := cron.New(cron.WithLocation(pstLocation))
 
+	// Configure oceans for the CSV poller
+	oceans := []types.Ocean{
+		types.OceanEmerald,
+		types.OceanMeridian,
+		types.OceanCerulean,
+	}
+
 	return &Scheduler{
-		cron: c,
-		db:   db,
-		stop: make(chan struct{}),
+		cron:      c,
+		db:        db,
+		csvPoller: poller.NewCSVPoller(db, oceans),
+		stop:      make(chan struct{}),
 	}
 }
 
@@ -56,9 +66,15 @@ func (s *Scheduler) Start() error {
 		return err
 	}
 
+	// Schedule CSV poller every 10 minutes
+	_, err = s.cron.AddFunc("*/10 * * * *", s.runCSVPoller)
+	if err != nil {
+		return err
+	}
+
 	s.cron.Start()
 	s.running = true
-	log.Println("Scheduler started - Daily scraper scheduled for 3:30 AM PST")
+	log.Println("Scheduler started - Daily scraper scheduled for 3:30 AM PST, CSV poller every 10 minutes")
 
 	return nil
 }
@@ -100,7 +116,6 @@ func (s *Scheduler) runDailyScrapers() {
 		types.OceanEmerald,
 		types.OceanMeridian,
 		types.OceanCerulean,
-		types.OceanObsidian,
 	}
 
 	var wg sync.WaitGroup
@@ -134,4 +149,11 @@ func (s *Scheduler) runScraperForOcean(ocean types.Ocean) error {
 
 	log.Printf("Scraper completed successfully for ocean: %s", ocean)
 	return nil
+}
+
+// runCSVPoller runs the CSV poller to import market orders
+func (s *Scheduler) runCSVPoller() {
+	if err := s.csvPoller.Run(); err != nil {
+		log.Printf("CSV poller error: %v", err)
+	}
 }

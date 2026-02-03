@@ -52,7 +52,7 @@ func (r *TaxRateRepository) CompareAcrossOceans(commodityID uint) ([]models.Comm
 	// Get the latest tax rate for this commodity across all oceans
 	var rates []models.CommodityTaxRate
 	
-	oceans := []types.Ocean{types.OceanEmerald, types.OceanMeridian, types.OceanCerulean, types.OceanObsidian}
+	oceans := []types.Ocean{types.OceanEmerald, types.OceanMeridian, types.OceanCerulean}
 	
 	for _, ocean := range oceans {
 		var rate models.CommodityTaxRate
